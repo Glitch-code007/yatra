@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect, Suspense } from "react"
+import { useState, useEffect, useMemo, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
 import { motion, AnimatePresence } from "motion/react"
 import {
   Compass,
@@ -53,6 +54,7 @@ function PlanTripContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const initialDestSlug = searchParams.get("dest")
+  const initialStateParam = searchParams.get("state")
 
   // Multi-step Wizard State (1 to 5)
   const [currentStep, setCurrentStep] = useState(1)
@@ -71,6 +73,50 @@ function PlanTripContent() {
 
   const currentOriginObj = ALL_INDIAN_STATES_AND_UTS.find((s) => s.name === originStateName) || ALL_INDIAN_STATES_AND_UTS[0]
 
+  // Combine custom destinations with all 36 Indian states & UTs
+  const allDestinationOptions = useMemo(() => {
+    const stateDestinations = ALL_INDIAN_STATES_AND_UTS.map((st) => {
+      const slug = st.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")
+      const existing = INDIAN_DESTINATIONS.find((d) => d.slug === slug || d.state.toLowerCase() === st.name.toLowerCase())
+      if (existing) return existing
+
+      return {
+        id: `dest-state-${slug}`,
+        name: `${st.name}`,
+        slug: slug,
+        district: `${st.capitalCity} / Main Hub`,
+        state: st.name,
+        region: st.region,
+        description: `Explore the vibrant culture, landscapes, and iconic attractions of ${st.name}.`,
+        shortDescription: `Top attractions, authentic food, and cultural heritage of ${st.name}.`,
+        latitude: st.lat,
+        longitude: st.lng,
+        bestTimeToVisit: "October to March",
+        bestMonths: [10, 11, 12, 1, 2, 3],
+        altitudeMeters: 300,
+        nearestAirport: `${st.capitalCity} Airport`,
+        nearestRailway: `${st.capitalCity} Railway Station`,
+        primaryImageUrl: "https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=800&q=80",
+        images: ["https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=800&q=80"],
+        tags: ["Culture", "Heritage", "Sightseeing", "Nature"],
+        isFeatured: false,
+        isPublished: true,
+        popularityScore: 90,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+    })
+
+    const map = new Map<string, any>()
+    INDIAN_DESTINATIONS.forEach((d) => map.set(d.slug, d))
+    stateDestinations.forEach((d) => {
+      if (!map.has(d.slug)) {
+        map.set(d.slug, d)
+      }
+    })
+    return Array.from(map.values())
+  }, [])
+
   const filteredDestinations = INDIAN_DESTINATIONS.filter((d) => {
     if (!destSearchQuery.trim()) return true
     const q = destSearchQuery.toLowerCase()
@@ -81,7 +127,12 @@ function PlanTripContent() {
     )
   })
 
-  const currentDestObj = INDIAN_DESTINATIONS.find((d) => d.slug === destinationSlug) || INDIAN_DESTINATIONS[0]
+  const currentDestObj = allDestinationOptions.find(
+    (d: any) =>
+      d.slug.toLowerCase() === destinationSlug.toLowerCase() ||
+      d.state.toLowerCase().replace(/[^a-z0-9]+/g, "-") === destinationSlug.toLowerCase() ||
+      d.state.toLowerCase() === destinationSlug.toLowerCase()
+  ) || allDestinationOptions[0]
 
   // Step 2: Dates & Travelers
   const [startDate, setStartDate] = useState(
@@ -107,15 +158,35 @@ function PlanTripContent() {
 
   // Automatically update destination if query param provided
   useEffect(() => {
-    if (initialDestSlug) {
-      setDestinationSlug(initialDestSlug)
+    const destParam = searchParams.get("dest")
+    const stateParam = searchParams.get("state")
+
+    if (destParam) {
+      const match = allDestinationOptions.find(
+        (d: any) => d.slug.toLowerCase() === destParam.toLowerCase() || d.state.toLowerCase().replace(/[^a-z0-9]+/g, "-") === destParam.toLowerCase()
+      )
+      if (match) {
+        setDestinationSlug(match.slug)
+      } else {
+        setDestinationSlug(destParam)
+      }
+    } else if (stateParam) {
+      const clean = stateParam.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")
+      const match = allDestinationOptions.find(
+        (d: any) => d.slug.toLowerCase() === clean || d.state.toLowerCase().replace(/[^a-z0-9]+/g, "-") === clean || d.state.toLowerCase() === stateParam.toLowerCase()
+      )
+      if (match) {
+        setDestinationSlug(match.slug)
+      } else {
+        setDestinationSlug(clean)
+      }
     }
-  }, [initialDestSlug])
+  }, [searchParams, allDestinationOptions])
 
   // Compute travel mode options when entering step 4
   const handleProceedToTravelModes = () => {
     const origin = ALL_INDIAN_STATES_AND_UTS.find((c) => c.name === originStateName) || ALL_INDIAN_STATES_AND_UTS[0]
-    const destObj = INDIAN_DESTINATIONS.find((d) => d.slug === destinationSlug) || INDIAN_DESTINATIONS[0]
+    const destObj = currentDestObj
 
     const options = estimateTravelOptions(
       { name: origin.name, lat: origin.lat, lng: origin.lng },
@@ -132,7 +203,7 @@ function PlanTripContent() {
 
   // Generate Itinerary & Budget when entering step 5
   const handleGenerateItinerary = () => {
-    const destObj = INDIAN_DESTINATIONS.find((d) => d.slug === destinationSlug) || INDIAN_DESTINATIONS[0]
+    const destObj = currentDestObj
     const transitCost = selectedTravelMode ? selectedTravelMode.estimatedCostMinInr : 4000
 
     const itinerary = ItineraryGeneratorService.generateItinerary({
@@ -172,7 +243,7 @@ function PlanTripContent() {
     if (!generatedItinerary || !budgetBreakdown) return
     setIsSaving(true)
 
-    const destObj = INDIAN_DESTINATIONS.find((d) => d.slug === destinationSlug) || INDIAN_DESTINATIONS[0]
+    const destObj = currentDestObj
     const origin = ALL_INDIAN_STATES_AND_UTS.find((c) => c.name === originStateName) || ALL_INDIAN_STATES_AND_UTS[0]
 
     const newTrip = TripStorageService.saveTrip({
@@ -339,25 +410,50 @@ function PlanTripContent() {
                   })
                   .map((stateItem) => {
                     const stateSlug = stateItem.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")
+                    const isSelected =
+                      currentDestObj.state.toLowerCase() === stateItem.name.toLowerCase() ||
+                      currentDestObj.slug.toLowerCase() === stateSlug ||
+                      destinationSlug.toLowerCase() === stateSlug
+
                     return (
-                      <button
+                      <div
                         key={stateItem.name}
-                        type="button"
-                        onClick={() => router.push(`/explore/state/${stateSlug}`)}
-                        className="p-3 rounded-xl text-xs font-medium text-left border border-border/60 hover:border-primary hover:bg-primary/5 transition-all bg-card flex flex-col gap-1 group"
+                        onClick={() => setDestinationSlug(stateSlug)}
+                        className={`p-3 rounded-xl text-xs font-medium text-left border transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+                          isSelected
+                            ? "border-primary bg-primary/10 text-primary font-bold shadow-xs ring-2 ring-primary"
+                            : "border-border/60 hover:border-primary/50 hover:bg-muted/50 text-muted-foreground bg-card"
+                        }`}
                       >
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="h-3 w-3 text-primary shrink-0" />
-                          <span className="font-bold text-foreground text-[13px] group-hover:text-primary transition-colors">{stateItem.name}</span>
+                        <div>
+                          <div className="flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
+                              <span className="font-bold text-foreground text-[13px] truncate">{stateItem.name}</span>
+                            </div>
+                            {isSelected && (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                            )}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground mt-0.5">
+                            {stateItem.type} • {stateItem.region} India
+                          </div>
                         </div>
-                        <div className="text-[10px] text-muted-foreground">
-                          {stateItem.type} • {stateItem.region} India
+
+                        <div className="flex items-center justify-between gap-1 pt-1 border-t border-border/40 text-[10px]">
+                          <span className={isSelected ? "text-primary font-bold" : "text-muted-foreground"}>
+                            {isSelected ? "✓ Selected" : "Click to select"}
+                          </span>
+                          <Link
+                            href={`/explore/state/${stateSlug}`}
+                            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                            className="text-primary hover:underline font-semibold flex items-center gap-0.5"
+                          >
+                            <span>Guide</span>
+                            <ArrowRight className="h-2.5 w-2.5" />
+                          </Link>
                         </div>
-                        <div className="text-[10px] text-primary/80 font-semibold mt-0.5 flex items-center gap-1">
-                          <ArrowRight className="h-2.5 w-2.5" />
-                          <span>View Places & Food</span>
-                        </div>
-                      </button>
+                      </div>
                     )
                   })}
               </div>

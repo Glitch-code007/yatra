@@ -72,7 +72,7 @@ export default function StateDetailPage({
               </div>
               <div className="mt-6">
                 <Button asChild size="lg" className="rounded-xl font-bold gap-2">
-                  <Link href="/app/plan">
+                  <Link href={`/app/plan?state=${resolvedParams.stateSlug}`}>
                     <Compass className="h-4 w-4" />
                     <span>Plan a Trip to {stateObj.name}</span>
                   </Link>
@@ -143,7 +143,7 @@ export default function StateDetailPage({
 
               <div className="flex flex-col gap-3 shrink-0">
                 <Button size="lg" asChild className="rounded-xl font-bold shadow-md gap-2">
-                  <Link href={`/app/plan?dest=${stateData?.places[0]?.destinationSlug || "jaipur"}`}>
+                  <Link href={`/app/plan?state=${stateData?.stateSlug || resolvedParams.stateSlug}&dest=${stateData?.places[0]?.destinationSlug || stateData?.stateSlug || resolvedParams.stateSlug}`}>
                     <Compass className="h-4 w-4" />
                     <span>Plan Trip to {stateData?.stateName}</span>
                   </Link>
